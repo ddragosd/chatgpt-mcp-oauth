@@ -1,0 +1,34 @@
+{
+  "name": "Adobe OAuth MCP Server",
+  "version": "1.0.0",
+  "description": "MCP server with Adobe IMS OAuth integration for personalized greetings",
+  "mcp": {
+    "endpoint": "http://localhost:8000/mcp",
+    "transport": "sse"
+  },
+  "oauth": {
+    "provider": "adobe",
+    "authorization_endpoint": "https://ims-na1.adobelogin.com/ims/authorize/v2",
+    "token_endpoint": "https://ims-na1.adobelogin.com/ims/token/v3",
+    "userinfo_endpoint": "https://ims-na1.adobelogin.com/ims/userinfo/v2",
+    "scopes": ["openid", "profile", "email"],
+    "metadata_endpoint": "http://localhost:8000/.well-known/oauth-authorization-server"
+  },
+  "tools": [
+    {
+      "name": "hello_user",
+      "description": "Get a personalized greeting using your name from Adobe",
+      "parameters": {
+        "access_token": {
+          "type": "string",
+          "description": "OAuth access token from Adobe IMS",
+          "required": true
+        }
+      },
+      "returns": {
+        "type": "string",
+        "description": "A personalized greeting message"
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  mcp-server:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ADOBE_CLIENT_ID=${ADOBE_CLIENT_ID}
+      - ADOBE_CLIENT_SECRET=${ADOBE_CLIENT_SECRET}
+      - ADOBE_IMS_BASE_URL=${ADOBE_IMS_BASE_URL:-https://ims-na1.adobelogin.com}
+      - ADOBE_IMS_USERINFO_URL=${ADOBE_IMS_USERINFO_URL:-https://ims-na1.adobelogin.com/ims/userinfo/v2}
+      - HOST=0.0.0.0
+      - PORT=8000
+    env_file:
+      - .env
+    restart: unless-stopped
