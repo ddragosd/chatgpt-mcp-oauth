@@ -1,3 +1,4 @@
+from math import log
 import os
 import json
 from typing import Optional, Dict, Any
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ADOBE_OPENID_ISSUER = os.getenv("ADOBE_OPENID_ISSUER", "https://ims-na1.adobelogin.com")
-ADOBE_USERINFO = os.getenv("ADOBE_USERINFO", f"{ADOBE_OPENID_ISSUER}/ims/userinfo/v2")
+ADOBE_USERINFO = os.getenv("ADOBE_USERINFO", f"{ADOBE_OPENID_ISSUER}/ims/profile/v1")
 ADOBE_CLIENT_ID = os.getenv("ADOBE_CLIENT_ID", "")
 ADOBE_CLIENT_SECRET = os.getenv("ADOBE_CLIENT_SECRET", "")
 RESOURCE_SERVER_URL = os.getenv("RESOURCE_SERVER_URL", "https://unscaled-kenny-unicellular.ngrok-free.dev/mcp")
@@ -29,9 +30,18 @@ async def get_name_from_adobe(access_token: str) -> Optional[str]:
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.get(ADOBE_USERINFO, headers=headers, params=params)
     if r.status_code != 200:
+        print(f"Adobe profile request failed: {r.status_code} - {r.text}")
         return None
     info = r.json()
-    return info.get("name") or info.get("given_name") or info.get("preferred_username")
+    # print(f"Adobe profile response: {info}")
+
+    # Adobe profile endpoint returns different field names than userinfo
+    return (info.get("displayName") or
+            info.get("name") or
+            info.get("first_name") or
+            info.get("firstName") or
+            info.get("email") or
+            info.get("sub", "Adobe User"))
 
 @app.post("/mcp")
 async def mcp_endpoint(request: Request) -> Response:
@@ -81,14 +91,37 @@ async def mcp_root_endpoint(request: Request) -> Response:
     MCP JSON-RPC 2.0 endpoint at root path (ChatGPT expects MCP at /).
     Handles initialize, tools/list, tools/call, etc.
     """
+    print("=" * 60)
+    print("MCP Request Debug:")
+    print("=" * 60)
+
+    # Log all headers for debugging
+    print("HEADERS:")
+    for name, value in request.headers.items():
+        if name.lower() == "authorization":
+            # Mask token for security but show if it exists
+            print(f"  {name}: {'Bearer ***' + value[-10:] if value.startswith('Bearer ') else repr(value)}")
+        else:
+            print(f"  {name}: {value}")
+
     auth = request.headers.get("authorization", "")
+    print(f"\nAuth header: {repr(auth[:50])}{'...' if len(auth) > 50 else ''}")
+
     if not auth.lower().startswith("bearer "):
+        print("❌ NO BEARER TOKEN FOUND")
         return mcp_error(401, "unauthorized", "Sign in with Adobe to use this server.")
 
     token = auth.split(" ", 1)[1].strip()
+    print(f"Token extracted: {token[:20]}...{token[-10:] if len(token) > 30 else token}")
+
+    print("🔍 Validating token with Adobe...")
     name = await get_name_from_adobe(token)
     if not name:
+        print("❌ ADOBE TOKEN VALIDATION FAILED")
         return mcp_error(401, "unauthorized", "Invalid or expired Adobe token. Please sign in again.")
+
+    print(f"✅ Token valid for user: {name}")
+    print("=" * 60)
 
     try:
         payload = await request.json()
@@ -201,7 +234,7 @@ async def oauth_authorization_server():
         "issuer": ADOBE_OPENID_ISSUER,
         "authorization_endpoint": f"{ADOBE_OPENID_ISSUER}/ims/authorize/v2",
         "token_endpoint": f"{ADOBE_OPENID_ISSUER}/ims/token/v3",
-        "userinfo_endpoint": f"{ADOBE_OPENID_ISSUER}/ims/userinfo/v2",
+        "userinfo_endpoint": f"{ADOBE_OPENID_ISSUER}/ims/profile/v1",
         "jwks_uri": f"{ADOBE_OPENID_ISSUER}/ims/keys",
         "scopes_supported": REQUIRED_SCOPES,
         "response_types_supported": ["code"],
@@ -290,7 +323,7 @@ async def openid_configuration():
         "issuer": ADOBE_OPENID_ISSUER,
         "authorization_endpoint": f"{ADOBE_OPENID_ISSUER}/ims/authorize/v2",
         "token_endpoint": f"{ADOBE_OPENID_ISSUER}/ims/token/v3",
-        "userinfo_endpoint": f"{ADOBE_OPENID_ISSUER}/ims/userinfo/v2",
+        "userinfo_endpoint": f"{ADOBE_OPENID_ISSUER}/ims/profile/v1",
         "jwks_uri": f"{ADOBE_OPENID_ISSUER}/ims/keys",
         "scopes_supported": REQUIRED_SCOPES,
         "response_types_supported": ["code"],
@@ -330,7 +363,7 @@ async def oauth_setup_guide():
             "scopes": REQUIRED_SCOPES
         },
         "notes": [
-            "This server validates Bearer tokens by calling Adobe's userinfo endpoint",
+            "This server validates Bearer tokens by calling Adobe's profile endpoint",
             "No token storage or session persistence is used",
             "Each request is validated independently"
         ]
